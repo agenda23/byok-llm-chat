@@ -27,7 +27,7 @@ function migrate() {
   const m = parseInt(old("maxTokens", s.maxTokens)); if (!isNaN(m)) s.maxTokens = m;
   LS.set("settings", s);
   if (localStorage.getItem("connections") == null) {
-    const url = old("baseUrl", "http://192.168.10.108:1234/v1");
+    const url = old("baseUrl", "http://localhost:1234/v1");
     LS.set("connections", [{ id: "c1", name: "LM Studio", baseUrl: url, apiKey: "" }]);
     LS.set("activeConnection", "c1");
   }
