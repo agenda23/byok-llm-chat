@@ -26,8 +26,8 @@ function migrate() {
   const t = parseFloat(old("temp", s.temperature)); if (!isNaN(t)) s.temperature = t;
   const m = parseInt(old("maxTokens", s.maxTokens)); if (!isNaN(m)) s.maxTokens = m;
   LS.set("settings", s);
-  if (localStorage.getItem("connections") == null) {
-    const url = old("baseUrl", "http://localhost:1234/v1");
+  const url = old("baseUrl", "");
+  if (url && localStorage.getItem("connections") == null) {
     LS.set("connections", [{ id: "c1", name: "LM Studio", baseUrl: url, apiKey: "" }]);
     LS.set("activeConnection", "c1");
   }
@@ -36,8 +36,7 @@ migrate();
 
 let settings = { ...DEFAULT_SETTINGS, ...LS.get("settings", {}) };
 let connections = LS.get("connections", []);
-if (!connections.length) connections = [{ id: "c1", name: "LM Studio", baseUrl: "http://localhost:1234/v1", apiKey: "" }];
-let activeConn = LS.get("activeConnection", connections[0].id);
+let activeConn = LS.get("activeConnection", connections[0]?.id ?? null);
 let presets = LS.get("presets", DEFAULT_PRESETS);
 
 const chatStore = () => settings.chatStorage === "session" ? sessionStorage : localStorage;
@@ -46,7 +45,7 @@ let currentId = parse(chatStore().getItem("currentId"), null);
 let aborter = null;
 
 const cur = () => chats.find(c => c.id === currentId);
-const conn = () => connections.find(c => c.id === activeConn) ?? connections[0];
+const conn = () => connections.find(c => c.id === activeConn) ?? connections[0] ?? null;
 const saveSettings = () => LS.set("settings", settings);
 const saveConns = () => { LS.set("connections", connections); LS.set("activeConnection", activeConn); };
 function persist() {
@@ -101,18 +100,24 @@ $("log").addEventListener("click", async e => {
 });
 
 // ---- connections ----
-const authHeaders = () => { const k = conn().apiKey; return k ? { Authorization: "Bearer " + k } : {}; };
-const baseUrl = () => conn().baseUrl.trim().replace(/\/$/, "");
+const authHeaders = () => { const k = conn()?.apiKey; return k ? { Authorization: "Bearer " + k } : {}; };
+const baseUrl = () => (conn()?.baseUrl ?? "").trim().replace(/\/$/, "");
 
 function renderConnSel() {
   $("connSel").innerHTML = "";
   connections.forEach(c => $("connSel").add(new Option(c.name || c.baseUrl, c.id)));
-  $("connSel").value = conn().id;
+  if (!connections.length) $("connSel").add(new Option("(未設定)", ""));
+  else $("connSel").value = conn().id;
 }
 $("connSel").onchange = () => { activeConn = $("connSel").value; saveConns(); loadModels(); };
 
 async function loadModels() {
   const el = $("conn");
+  if (!conn() || !baseUrl()) {
+    $("model").innerHTML = "";
+    el.textContent = "接続先が未設定です。「管理」から追加してください。"; el.className = "warn";
+    return;
+  }
   el.textContent = "接続確認中…"; el.className = "";
   if (location.protocol === "https:" && baseUrl().startsWith("http:")) {
     el.textContent = "HTTPSページから http:// には接続できません (mixed content)。Tailscale Serve等で https:// にしてください。";
@@ -132,7 +137,7 @@ async function loadModels() {
     if (!el.classList.contains("warn")) { el.textContent = "接続失敗: " + e.message + " (CORS/到達性を確認)"; el.className = "ng"; }
   }
 }
-$("model").onchange = () => LS.set("model:" + conn().id, $("model").value);
+$("model").onchange = () => conn() && LS.set("model:" + conn().id, $("model").value);
 $("reload").onclick = loadModels;
 
 // ---- presets ----
@@ -288,6 +293,7 @@ async function generate() {
 
 async function send() {
   const text = $("input").value.trim(); if (!text || aborter) return;
+  if (!conn() || !$("model").value) { setStatus("接続先とモデルを設定してください (「管理」から接続先を追加)", "ng"); return; }
   if (!cur()) newChat();
   const c = cur();
   c.messages.push({ role: "user", content: text });
@@ -345,10 +351,10 @@ function renderConnList() {
       i.onchange = () => { c[key] = i.value.trim(); saveConns(); renderConnSel(); };
       return i;
     };
-    const del = document.createElement("button"); del.textContent = "この接続先を削除"; del.disabled = connections.length < 2;
+    const del = document.createElement("button"); del.textContent = "この接続先を削除";
     del.onclick = () => {
       connections = connections.filter(x => x !== c);
-      if (activeConn === c.id) activeConn = connections[0].id;
+      if (activeConn === c.id) activeConn = connections[0]?.id ?? null;
       saveConns(); renderConnSel(); renderConnList();
     };
     d.append(f("名前 (例: 自宅PC)", "name"), f("Base URL (例: https://pc.tailnet.ts.net/v1)", "baseUrl"), f("API キー (任意)", "apiKey", "password"), del);
@@ -356,7 +362,8 @@ function renderConnList() {
   });
 }
 $("addConn").onclick = () => {
-  connections.push({ id: Date.now().toString(36), name: "新しい接続先", baseUrl: "https://", apiKey: "" });
+  const c = { id: Date.now().toString(36), name: "新しい接続先", baseUrl: "https://", apiKey: "" };
+  connections.push(c); activeConn ??= c.id;
   saveConns(); renderConnSel(); renderConnList();
 };
 
@@ -389,3 +396,4 @@ renderPresets();
 $("system").value = cur()?.system ?? LS.get("s_system", DEFAULT_PRESETS["標準アシスタント"]);
 if (!cur()) { currentId = null; newChat(); } else render();
 loadModels();
+if (!connections.length) openModal();
