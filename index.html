@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="ja" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>byod-llm-chat</title>
+<link rel="stylesheet" href="css/style.css">
+<link id="hlcss" rel="stylesheet" href="vendor/hl-light.css">
+</head>
+<body>
+<aside>
+  <h1 class="brand">byod-llm-chat</h1>
+  <h2>接続</h2>
+  <div class="section">
+    <label>接続先</label>
+    <div class="row"><select id="connSel"></select><button id="openConns" class="fix" title="接続先を管理">管理</button></div>
+    <label>モデル</label>
+    <div class="row"><select id="model"></select><button id="reload" class="fix" title="モデル一覧を更新">↻</button></div>
+    <div id="conn" style="font-size:12px;margin-top:4px"></div>
+  </div>
+
+  <h2>キャラクター</h2>
+  <div class="section">
+    <div class="row">
+      <select id="preset"></select>
+      <button id="savePreset" class="fix" title="現在の設定をプリセット保存">保存</button>
+      <button id="delPreset" class="fix" title="プリセット削除">削除</button>
+    </div>
+    <label>システムプロンプト</label>
+    <textarea id="system" rows="6" placeholder="例: あなたは親切なアシスタントです。"></textarea>
+  </div>
+
+  <h2>履歴</h2>
+  <div class="section row"><button id="newChat" class="primary">＋ 新規チャット</button><button id="openSettings" class="fix">⚙ 設定</button></div>
+  <div id="history"></div>
+</aside>
+
+<main>
+  <div id="topbar"><button id="menu">☰</button><span id="topTitle"></span></div>
+  <div id="log"></div>
+  <div id="status"></div>
+  <div id="composer">
+    <textarea id="input"></textarea>
+    <button id="send" class="primary">送信</button>
+    <button id="stop" disabled>停止</button>
+  </div>
+</main>
+
+<div id="modal"><div class="box" role="dialog" aria-modal="true" aria-label="設定">
+  <div class="head"><strong>設定</strong><button id="closeSettings" class="fix">閉じる</button></div>
+
+  <h3>接続先</h3>
+  <div id="connList"></div>
+  <button id="addConn">＋ 接続先を追加</button>
+  <div class="hint">HTTPS で配信している場合、接続先も https:// が必要です (Tailscale Serve 推奨)。API キーはこの端末の localStorage に平文で保存されます。</div>
+
+  <h3>入力・表示</h3>
+  <label>送信キー</label>
+  <select id="s_sendKey"><option value="ctrlEnter">Ctrl/Cmd + Enter で送信 (Enterは改行)</option><option value="enter">Enter で送信 (Shift+Enterは改行)</option></select>
+  <label>テーマ</label>
+  <select id="s_theme"><option value="auto">システムに合わせる</option><option value="light">ライト</option><option value="dark">ダーク</option></select>
+  <label>文字サイズ: <span id="fsVal"></span>px</label>
+  <input id="s_fontSize" type="range" min="12" max="20" step="1">
+  <label><input type="checkbox" id="s_markdown"> 応答をMarkdownとして整形表示</label>
+  <label><input type="checkbox" id="s_lenientMd"> Markdownを緩く解釈 (「** 太字**」や「**「日本語」**と」を太字にする)</label>
+  <label><input type="checkbox" id="s_showReasoning"> 思考過程を表示</label>
+
+  <h3>生成</h3>
+  <div class="row">
+    <div><label>Temperature</label><input id="s_temperature" type="number" min="0" max="2" step="0.1"></div>
+    <div><label>Max tokens (0で無制限)</label><input id="s_maxTokens" type="number" min="0" step="64"></div>
+  </div>
+  <label><input type="checkbox" id="s_stream"> ストリーミング表示</label>
+
+  <h3>データ</h3>
+  <label>チャット履歴の保存先</label>
+  <select id="s_chatStorage"><option value="local">localStorage (ブラウザを閉じても残る)</option><option value="session">sessionStorage (タブを閉じると消える)</option></select>
+  <div class="hint">設定・接続先・プリセットは常に localStorage に保存されます。</div>
+  <div class="row" style="margin-top:8px">
+    <button id="export">JSON書出し</button>
+    <button id="importBtn">JSON読込</button>
+    <button id="wipe">全履歴を削除</button>
+  </div>
+  <input id="importFile" type="file" accept="application/json" hidden>
+</div></div>
+
+<script src="vendor/marked.min.js"></script>
+<script src="vendor/purify.min.js"></script>
+<script src="vendor/highlight.min.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
