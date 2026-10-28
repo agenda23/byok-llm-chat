@@ -1,4 +1,4 @@
-# byod-llm-chat 改善計画
+# byok-llm-chat 改善計画
 
 ## 背景と目的
 
