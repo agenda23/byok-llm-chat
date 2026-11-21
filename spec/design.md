@@ -38,7 +38,7 @@ temperature: 0.7
 maxTokens: 1024
 chatStorage: "local" | "session" (local)
 apiMode: "openai" | "lmstudio"   (openai)
-mcpServers: [{id,label,url,allowedTools,headers,enabled}]  ([])
+mcpServers: [{id,kind,label,url,allowedTools,headers,enabled}]  (kind: "ephemeral" | "plugin")  ([])
 ```
 
 チャット保存先を切り替えた時は、現在の履歴を新しい保存先へ書き込み、旧保存先から削除する。
@@ -49,7 +49,7 @@ mcpServers: [{id,label,url,allowedTools,headers,enabled}]  ([])
 `apiMode: "lmstudio"` のとき、`<Base URL の /v1 を除いたもの>/api/v1/chat` へ POST する。
 本文: `{model, input, system_prompt?, temperature, max_output_tokens?, stream, integrations?}`。
 `integrations` は有効な `mcpServers` から `{type:"ephemeral_mcp", server_label, server_url, allowed_tools?, headers?}` を生成
-（`allowed_tools` は空なら省略＝全ツール）。API はステートレスなため、2ターン目以降は履歴を `input` 1本にまとめる。
+（`allowed_tools` は空なら省略＝全ツール）。`kind: "plugin"` は LM Studio の `mcp.json` 登録済みサーバー用で、`label` にサーバー名を入れ `{type:"plugin", id:"mcp/<名前>"}` を送る。API はステートレスなため、2ターン目以降は履歴を `input` 1本にまとめる。
 SSE は `event:` 行付き（`message.delta` / `reasoning.delta` / `tool_call.*` / `error`）。ツール呼び出しは
 チャット形式を変えず、思考過程 (`reasoning`) に追記して表示する。`openai` 方式の挙動は従来どおり。
 

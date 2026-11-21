@@ -239,14 +239,33 @@ function setBusy(b) { $("send").disabled = b; $("stop").disabled = !b; }
 
 // LM Studio native API (/api/v1/chat): stateless input string + optional ephemeral MCP integrations
 const nativeUrl = () => baseUrl().replace(/\/v1$/, "") + "/api/v1/chat";
+// headers: JSON object, or "Name: value" lines -> {Name: value}; anything else is dropped (API requires an object)
+function parseHeaders(src) {
+  src = (src || "").trim(); if (!src) return null;
+  const j = parse(src, null);
+  if (j && typeof j === "object" && !Array.isArray(j)) return j;
+  const o = {};
+  for (const line of src.split(/\n/)) {
+    const i = line.indexOf(":"); if (i < 1) return null;
+    o[line.slice(0, i).trim()] = line.slice(i + 1).trim();
+  }
+  return o;
+}
 function nativeIntegrations() {
-  return (settings.mcpServers || []).filter(m => m.enabled && m.url?.trim()).map(m => {
-    const o = { type: "ephemeral_mcp", server_label: m.label?.trim() || "mcp", server_url: m.url.trim() };
+  return (settings.mcpServers || []).filter(m => m.enabled).map(m => {
     const tools = (m.allowedTools || "").split(",").map(t => t.trim()).filter(Boolean);
+    let o;
+    if (m.kind === "plugin") { // server registered in LM Studio's mcp.json
+      const name = (m.label || "").trim().replace(/^mcp\//, ""); if (!name) return null;
+      o = { type: "plugin", id: "mcp/" + name };
+    } else {
+      if (!m.url?.trim()) return null;
+      o = { type: "ephemeral_mcp", server_label: m.label?.trim() || "mcp", server_url: m.url.trim() };
+      const h = parseHeaders(m.headers); if (h) o.headers = h;
+    }
     if (tools.length) o.allowed_tools = tools;
-    if (m.headers?.trim()) o.headers = parse(m.headers, undefined);
     return o;
-  });
+  }).filter(Boolean);
 }
 function nativePayload(sys, history) {
   const last = history[history.length - 1];
@@ -401,15 +420,21 @@ function renderMcpList() {
     const lab = document.createElement("label"), cb = document.createElement("input");
     cb.type = "checkbox"; cb.checked = !!m.enabled; cb.onchange = () => { m.enabled = cb.checked; save(); };
     lab.append(cb, " 有効");
+    const kind = document.createElement("select");
+    kind.add(new Option("URLを直接指定 (ephemeral_mcp)", "ephemeral")); kind.add(new Option("LM Studio の mcp.json に登録済み (plugin)", "plugin"));
+    kind.value = m.kind === "plugin" ? "plugin" : "ephemeral";
+    kind.onchange = () => { m.kind = kind.value; save(); renderMcpList(); };
     const del = document.createElement("button"); del.textContent = "このMCPサーバーを削除";
     del.onclick = () => { settings.mcpServers = settings.mcpServers.filter(x => x !== m); save(); renderMcpList(); };
-    d.append(lab, f("ラベル (例: huggingface)", "label"), f("サーバーURL (例: https://huggingface.co/mcp)", "url"),
-      f("許可ツール (カンマ区切り、空なら全て)", "allowedTools"), f('ヘッダー JSON (任意、例: {"Authorization":"Bearer ..."})', "headers"), del);
+    const tools = f("許可ツール (カンマ区切り、空なら全て)", "allowedTools");
+    if (m.kind === "plugin") d.append(lab, kind, f("mcp.json のサーバー名 (例: time)", "label"), tools, del);
+    else d.append(lab, kind, f("ラベル (例: huggingface)", "label"), f("サーバーURL (例: https://huggingface.co/mcp)", "url"),
+      tools, f('ヘッダー (任意、JSON か「名前: 値」。例: Authorization: Bearer xxx)', "headers"), del);
     box.appendChild(d);
   });
 }
 $("addMcp").onclick = () => {
-  settings.mcpServers.push({ id: Date.now().toString(36), label: "", url: "https://", allowedTools: "", headers: "", enabled: true });
+  settings.mcpServers.push({ id: Date.now().toString(36), kind: "ephemeral", label: "", url: "https://", allowedTools: "", headers: "", enabled: true });
   saveSettings(); renderMcpList();
 };
 
