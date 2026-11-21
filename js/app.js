@@ -10,6 +10,7 @@ const LS = {
 const DEFAULT_SETTINGS = {
   sendKey: "ctrlEnter", theme: "auto", fontSize: 14, markdown: true, lenientMd: true, showReasoning: true,
   stream: true, temperature: 0.7, maxTokens: 1024, chatStorage: "local",
+  apiMode: "openai", mcpServers: [], // apiMode: "openai" (/v1/chat/completions) | "lmstudio" (/api/v1/chat + MCP)
 };
 const DEFAULT_PRESETS = {
   "標準アシスタント": "あなたは親切で簡潔に答えるアシスタントです。日本語で回答してください。",
@@ -236,16 +237,44 @@ function render() {
 // ---- generation ----
 function setBusy(b) { $("send").disabled = b; $("stop").disabled = !b; }
 
+// LM Studio native API (/api/v1/chat): stateless input string + optional ephemeral MCP integrations
+const nativeUrl = () => baseUrl().replace(/\/v1$/, "") + "/api/v1/chat";
+function nativeIntegrations() {
+  return (settings.mcpServers || []).filter(m => m.enabled && m.url?.trim()).map(m => {
+    const o = { type: "ephemeral_mcp", server_label: m.label?.trim() || "mcp", server_url: m.url.trim() };
+    const tools = (m.allowedTools || "").split(",").map(t => t.trim()).filter(Boolean);
+    if (tools.length) o.allowed_tools = tools;
+    if (m.headers?.trim()) o.headers = parse(m.headers, undefined);
+    return o;
+  });
+}
+function nativePayload(sys, history) {
+  const last = history[history.length - 1];
+  const input = history.length === 1 ? last.content
+    : "[これまでの会話]\n" + history.slice(0, -1).map(m => `${m.role === "user" ? "ユーザー" : "アシスタント"}: ${m.content}`).join("\n\n")
+      + "\n\n[今回のユーザー発言]\n" + last.content;
+  const p = { model: $("model").value, input, temperature: settings.temperature, stream: settings.stream };
+  if (sys) p.system_prompt = sys;
+  if (settings.maxTokens > 0) p.max_output_tokens = settings.maxTokens;
+  const integ = nativeIntegrations();
+  if (integ.length) p.integrations = integ;
+  return p;
+}
+const fmtTool = d => `[ツール] ${d.tool ?? ""}${d.arguments ? " " + JSON.stringify(d.arguments) : ""}`;
+const clip = (v, n = 300) => { const t = typeof v === "string" ? v : JSON.stringify(v ?? ""); return t.length > n ? t.slice(0, n) + "…" : t; };
+
 async function generate() {
   const c = cur();
   const sys = $("system").value.trim();
-  const payload = {
+  const native = settings.apiMode === "lmstudio";
+  const history = c.messages.map(({ role, content }) => ({ role, content }));
+  const payload = native ? nativePayload(sys, history) : {
     model: $("model").value,
-    messages: [...(sys ? [{ role: "system", content: sys }] : []), ...c.messages.map(({ role, content }) => ({ role, content }))],
+    messages: [...(sys ? [{ role: "system", content: sys }] : []), ...history],
     temperature: settings.temperature,
     stream: settings.stream
   };
-  if (settings.maxTokens > 0) payload.max_tokens = settings.maxTokens;
+  if (!native && settings.maxTokens > 0) payload.max_tokens = settings.maxTokens;
 
   const msg = { role: "assistant", content: "", reasoning: "" };
   c.messages.push(msg);
@@ -256,29 +285,52 @@ async function generate() {
   const t0 = performance.now();
   let raf = 0;
   const paint = () => { raf = 0; setBody(el, msg); $("log").scrollTop = $("log").scrollHeight; };
+  const addReason = t => { msg.reasoning += (msg.reasoning && !msg.reasoning.endsWith("\n") ? "\n" : "") + t + "\n"; };
+  // one SSE event -> message state (OpenAI chunks have no event name; native events do)
+  const onEvent = (ev, d) => {
+    if (!native) {
+      const delta = d.choices?.[0]?.delta ?? {};
+      msg.content += delta.content ?? ""; msg.reasoning += delta.reasoning_content ?? "";
+      return;
+    }
+    switch (ev || d.type) {
+      case "message.delta": msg.content += d.content ?? ""; break;
+      case "reasoning.delta": msg.reasoning += d.content ?? ""; break;
+      case "tool_call.start": setStatus("ツール呼び出し中…"); break;
+      case "tool_call.success": addReason(fmtTool(d) + "\n→ " + clip(d.output)); break;
+      case "tool_call.failure": addReason(fmtTool(d) + "\n→ 失敗: " + clip(d.reason ?? d.error)); break;
+      case "error": throw new Error(d.error?.message ?? clip(d));
+    }
+  };
   try {
-    const r = await fetch(baseUrl() + "/chat/completions", {
+    const r = await fetch(native ? nativeUrl() : baseUrl() + "/chat/completions", {
       method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() },
       body: JSON.stringify(payload), signal: aborter.signal
     });
     if (!r.ok) throw new Error(`HTTP ${r.status}: ${await r.text()}`);
     if (payload.stream) {
-      const reader = r.body.getReader(), dec = new TextDecoder(); let buf = "";
+      const reader = r.body.getReader(), dec = new TextDecoder(); let buf = "", ev = "";
       while (true) {
         const { done, value } = await reader.read(); if (done) break;
         buf += dec.decode(value, { stream: true });
         const lines = buf.split("\n"); buf = lines.pop();
         for (const line of lines) {
+          if (line.startsWith("event:")) { ev = line.slice(6).trim(); continue; }
           if (!line.startsWith("data:")) continue;
           const data = line.slice(5).trim(); if (!data || data === "[DONE]") continue;
-          const delta = JSON.parse(data).choices?.[0]?.delta ?? {};
-          msg.content += delta.content ?? ""; msg.reasoning += delta.reasoning_content ?? "";
+          onEvent(ev, JSON.parse(data)); ev = "";
           if (!raf) raf = requestAnimationFrame(paint);
         }
       }
     } else {
-      const j = await r.json(); const m = j.choices[0].message;
-      msg.content = m.content ?? ""; msg.reasoning = m.reasoning_content ?? "";
+      const j = await r.json();
+      if (native) {
+        for (const o of j.output ?? []) {
+          if (o.type === "message") msg.content += o.content ?? "";
+          else if (o.type === "reasoning") msg.reasoning += o.content ?? "";
+          else if (o.type === "tool_call") addReason(fmtTool(o) + "\n→ " + clip(o.output));
+        }
+      } else { const m = j.choices[0].message; msg.content = m.content ?? ""; msg.reasoning = m.reasoning_content ?? ""; }
     }
     setStatus(`完了 (${((performance.now() - t0) / 1000).toFixed(1)}秒)`);
   } catch (e) {
@@ -311,7 +363,7 @@ $("input").addEventListener("keydown", e => {
 $("menu").onclick = () => document.body.classList.toggle("side-open");
 
 // ---- settings modal ----
-const openModal = () => { renderConnList(); $("modal").classList.add("open"); };
+const openModal = () => { renderConnList(); renderMcpList(); $("modal").classList.add("open"); };
 const closeModal = () => { $("modal").classList.remove("open"); loadModels(); };
 $("openSettings").onclick = openModal;
 $("openConns").onclick = openModal;
@@ -331,9 +383,35 @@ const bind = (key, type) => {
   });
 };
 [["sendKey"], ["theme"], ["markdown", "bool"], ["lenientMd", "bool"], ["showReasoning", "bool"], ["stream", "bool"],
- ["temperature", "num"], ["maxTokens", "num"], ["chatStorage"], ["fontSize", "num"]].forEach(([k, t]) => bind(k, t));
+ ["temperature", "num"], ["maxTokens", "num"], ["chatStorage"], ["fontSize", "num"], ["apiMode"]].forEach(([k, t]) => bind(k, t));
 $("s_fontSize").addEventListener("input", () => { settings.fontSize = +$("s_fontSize").value; $("fsVal").textContent = settings.fontSize; applyAppearance(); });
 $("fsVal").textContent = settings.fontSize;
+
+// MCP servers (used only when apiMode === "lmstudio")
+function renderMcpList() {
+  const box = $("mcpList"); box.innerHTML = "";
+  const save = saveSettings;
+  settings.mcpServers.forEach(m => {
+    const d = document.createElement("div"); d.className = "conn";
+    const f = (ph, key) => {
+      const i = document.createElement("input"); i.placeholder = ph; i.value = m[key] ?? ""; i.autocomplete = "off";
+      i.onchange = () => { m[key] = i.value.trim(); save(); };
+      return i;
+    };
+    const lab = document.createElement("label"), cb = document.createElement("input");
+    cb.type = "checkbox"; cb.checked = !!m.enabled; cb.onchange = () => { m.enabled = cb.checked; save(); };
+    lab.append(cb, " 有効");
+    const del = document.createElement("button"); del.textContent = "このMCPサーバーを削除";
+    del.onclick = () => { settings.mcpServers = settings.mcpServers.filter(x => x !== m); save(); renderMcpList(); };
+    d.append(lab, f("ラベル (例: huggingface)", "label"), f("サーバーURL (例: https://huggingface.co/mcp)", "url"),
+      f("許可ツール (カンマ区切り、空なら全て)", "allowedTools"), f('ヘッダー JSON (任意、例: {"Authorization":"Bearer ..."})', "headers"), del);
+    box.appendChild(d);
+  });
+}
+$("addMcp").onclick = () => {
+  settings.mcpServers.push({ id: Date.now().toString(36), label: "", url: "https://", allowedTools: "", headers: "", enabled: true });
+  saveSettings(); renderMcpList();
+};
 
 function switchStorage(to) {
   const from = chatStore();

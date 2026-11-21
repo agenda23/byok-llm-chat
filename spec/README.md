@@ -23,6 +23,7 @@
 | 4 | ストレージの使い分け（チャット履歴の保存先を local / session から選択） | 1 |
 | 5 | Cloudflare Pages 配備（キャッシュヘッダ、ライブラリ同梱） | 1 |
 | 6 | モバイル対応（サイドバー開閉）、日本語 IME 入力中の Enter 誤送信防止 | 1 |
+| 6.5 | LM Studio ネイティブ API (`/api/v1/chat`) と ephemeral MCP の設定・送信 | 1 |
 | 7 | Cloudflare KV/D1 による履歴同期 | 2（未実装・設計のみ） |
 
 ## 非ゴール

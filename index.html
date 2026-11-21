@@ -72,6 +72,13 @@
   </div>
   <label><input type="checkbox" id="s_stream"> ストリーミング表示</label>
 
+  <h3>API方式 / MCP</h3>
+  <label>リクエスト方式</label>
+  <select id="s_apiMode"><option value="openai">OpenAI互換 (/v1/chat/completions)</option><option value="lmstudio">LM Studioネイティブ (/api/v1/chat, MCP利用可)</option></select>
+  <div id="mcpList"></div>
+  <button id="addMcp">＋ MCPサーバーを追加</button>
+  <div class="hint">MCPはLM Studioネイティブ方式のときだけ送信されます (integrations に ephemeral_mcp として付与)。LM Studio側でephemeral MCPの利用許可が必要です。会話履歴は1つの input にまとめて送ります。ヘッダーに認証情報を入れた場合は端末の localStorage に平文で保存されます。</div>
+
   <h3>データ</h3>
   <label>チャット履歴の保存先</label>
   <select id="s_chatStorage"><option value="local">localStorage (ブラウザを閉じても残る)</option><option value="session">sessionStorage (タブを閉じると消える)</option></select>

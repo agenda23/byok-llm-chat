@@ -22,6 +22,7 @@ To run, serve the directory statically (e.g. `python -m http.server`) or open `i
   - `chats` and `currentId` live in whichever store `settings.chatStorage` selects (`chatStore()`), either local or session. `persist()` writes them; call it after mutating `chats` or `currentId`.
   - `migrate()` converts the legacy `s_*` keys on first run. Chat data format `{id,title,system,messages:[{role,content,reasoning?}]}` is unchanged.
 - **Connections**: a list of `{id,name,baseUrl,apiKey}`. `conn()`, `baseUrl()` and `authHeaders()` are used by both `loadModels()` (GET `/models`) and `generate()` (POST `/chat/completions`, SSE streaming or plain).
+- **API mode**: `settings.apiMode` selects OpenAI-compatible (`/chat/completions`) or LM Studio native (`/api/v1/chat`, with `settings.mcpServers` sent as `ephemeral_mcp` integrations). Both go through `generate()`; see `spec/design.md` §2.1.
 - **Rendering**: `setBody()` updates persistent child nodes (`details.think` and `.main`) so streaming doesn't reset the reasoning block's open state. Assistant text goes through `marked`, then `DOMPurify`, then `innerHTML`; keep that order. User text is plain `textContent`. Streaming repaints are throttled with `requestAnimationFrame`.
 - **Input**: the send key is configurable (`settings.sendKey`). The keydown handler must skip IME composition (`isComposing` / keyCode 229).
 - **Settings modal**: controls with `s_<key>` ids are bound generically by `bind()`. Changes apply and save immediately. Changing `chatStorage` goes through `switchStorage()`, which migrates the chat data.
