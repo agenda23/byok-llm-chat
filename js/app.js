@@ -272,14 +272,14 @@ function nativePayload(sys, history) {
   const input = history.length === 1 ? last.content
     : "[これまでの会話]\n" + history.slice(0, -1).map(m => `${m.role === "user" ? "ユーザー" : "アシスタント"}: ${m.content}`).join("\n\n")
       + "\n\n[今回のユーザー発言]\n" + last.content;
-  const p = { model: $("model").value, input, temperature: settings.temperature, stream: settings.stream };
+  const p = { model: $("model").value, input, temperature: Math.min(1, Math.max(0, settings.temperature)), stream: settings.stream }; // native API accepts 0..1 only
   if (sys) p.system_prompt = sys;
   if (settings.maxTokens > 0) p.max_output_tokens = settings.maxTokens;
   const integ = nativeIntegrations();
   if (integ.length) p.integrations = integ;
   return p;
 }
-const fmtTool = d => `[ツール] ${d.tool ?? ""}${d.arguments ? " " + JSON.stringify(d.arguments) : ""}`;
+const fmtTool = d => { const t = d.tool ?? d.metadata?.tool_name ?? "", a = d.arguments ?? d.metadata?.arguments; return `[ツール] ${t}${a ? " " + JSON.stringify(a) : ""}`; };
 const clip = (v, n = 300) => { const t = typeof v === "string" ? v : JSON.stringify(v ?? ""); return t.length > n ? t.slice(0, n) + "…" : t; };
 
 async function generate() {
@@ -348,6 +348,7 @@ async function generate() {
           if (o.type === "message") msg.content += o.content ?? "";
           else if (o.type === "reasoning") msg.reasoning += o.content ?? "";
           else if (o.type === "tool_call") addReason(fmtTool(o) + "\n→ " + clip(o.output));
+          else if (o.type === "invalid_tool_call") addReason(fmtTool(o) + "\n→ 失敗: " + clip(o.reason));
         }
       } else { const m = j.choices[0].message; msg.content = m.content ?? ""; msg.reasoning = m.reasoning_content ?? ""; }
     }
