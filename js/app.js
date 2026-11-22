@@ -286,7 +286,12 @@ async function generate() {
   const c = cur();
   const sys = $("system").value.trim();
   const native = settings.apiMode === "lmstudio";
-  const history = c.messages.map(({ role, content }) => ({ role, content }));
+  // merge consecutive same-role messages (e.g. user turns whose generation failed) so the model sees alternating turns
+  const history = c.messages.reduce((a, { role, content }) => {
+    const l = a[a.length - 1];
+    if (l && l.role === role) l.content += "\n\n" + content; else a.push({ role, content });
+    return a;
+  }, []);
   const payload = native ? nativePayload(sys, history) : {
     model: $("model").value,
     messages: [...(sys ? [{ role: "system", content: sys }] : []), ...history],
