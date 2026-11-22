@@ -252,20 +252,22 @@ function parseHeaders(src) {
   return o;
 }
 function nativeIntegrations() {
-  return (settings.mcpServers || []).filter(m => m.enabled).map(m => {
+  return (settings.mcpServers || []).filter(m => m.enabled).flatMap(m => {
     const tools = (m.allowedTools || "").split(",").map(t => t.trim()).filter(Boolean);
-    let o;
-    if (m.kind === "plugin") { // server registered in LM Studio's mcp.json
-      const name = (m.label || "").trim().replace(/^mcp\//, ""); if (!name) return null;
-      o = { type: "plugin", id: "mcp/" + name };
-    } else {
-      if (!m.url?.trim()) return null;
-      o = { type: "ephemeral_mcp", server_label: m.label?.trim() || "mcp", server_url: m.url.trim() };
-      const h = parseHeaders(m.headers); if (h) o.headers = h;
+    if (m.kind === "plugin") { // servers registered in LM Studio's mcp.json; label may list several, comma-separated
+      const names = (m.label || "").split(",").map(n => n.trim().replace(/^mcp\//, "")).filter(Boolean);
+      return names.map(n => {
+        const o = { type: "plugin", id: "mcp/" + n };
+        if (tools.length && names.length === 1) o.allowed_tools = tools; // tool filter only when unambiguous
+        return o;
+      });
     }
+    if (!m.url?.trim()) return [];
+    const o = { type: "ephemeral_mcp", server_label: m.label?.trim() || "mcp", server_url: m.url.trim() };
+    const h = parseHeaders(m.headers); if (h) o.headers = h;
     if (tools.length) o.allowed_tools = tools;
-    return o;
-  }).filter(Boolean);
+    return [o];
+  });
 }
 function nativePayload(sys, history) {
   const last = history[history.length - 1];
@@ -432,8 +434,8 @@ function renderMcpList() {
     kind.onchange = () => { m.kind = kind.value; save(); renderMcpList(); };
     const del = document.createElement("button"); del.textContent = "このMCPサーバーを削除";
     del.onclick = () => { settings.mcpServers = settings.mcpServers.filter(x => x !== m); save(); renderMcpList(); };
-    const tools = f("許可ツール (カンマ区切り、空なら全て)", "allowedTools");
-    if (m.kind === "plugin") d.append(lab, kind, f("mcp.json のサーバー名 (例: time)", "label"), tools, del);
+    const tools = f(m.kind === "plugin" ? "許可ツール (サーバー名が1つのときだけ有効。空なら全て)" : "許可ツール (カンマ区切り、空なら全て)", "allowedTools");
+    if (m.kind === "plugin") d.append(lab, kind, f("mcp.json のサーバー名 (カンマ区切りで複数可。例: time, fetch_url)", "label"), tools, del);
     else d.append(lab, kind, f("ラベル (例: huggingface)", "label"), f("サーバーURL (例: https://huggingface.co/mcp)", "url"),
       tools, f('ヘッダー (任意、JSON か「名前: 値」。例: Authorization: Bearer xxx)', "headers"), del);
     box.appendChild(d);
