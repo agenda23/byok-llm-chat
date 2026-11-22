@@ -377,13 +377,37 @@ async function send() {
   const c = cur();
   c.messages.push({ role: "user", content: text });
   if (c.messages.length === 1) c.title = text.slice(0, 24);
-  $("input").value = ""; setStatus(""); persist(); render();
+  $("input").value = ""; recallIdx = -1; setStatus(""); persist(); render();
   generate();
 }
 $("send").onclick = send;
 $("stop").onclick = () => aborter?.abort();
+// console-style recall: ArrowUp/ArrowDown walk through previously sent messages (newest first, across chats)
+let recallIdx = -1, recallDraft = "";
+const sentHistory = () => chats.flatMap(c => c.messages.filter(m => m.role === "user").map(m => m.content).reverse());
+function recall(e) {
+  const el = $("input"), up = e.key === "ArrowUp";
+  if (e.shiftKey || e.altKey || e.metaKey || e.ctrlKey || el.selectionStart !== el.selectionEnd) return false;
+  // only when the caret is on the first (up) / last (down) line, so multi-line editing still works
+  if (up ? el.value.slice(0, el.selectionStart).includes("\n") : el.value.slice(el.selectionEnd).includes("\n")) return false;
+  const h = sentHistory();
+  if (up) {
+    if (recallIdx + 1 >= h.length) return false;
+    if (recallIdx < 0) recallDraft = el.value;
+    recallIdx++;
+  } else {
+    if (recallIdx < 0) return false;
+    recallIdx--;
+  }
+  el.value = recallIdx < 0 ? recallDraft : h[recallIdx];
+  el.setSelectionRange(el.value.length, el.value.length);
+  return true;
+}
+$("input").addEventListener("input", e => { if (!e.isTrusted || e.inputType) recallIdx = -1; });
 $("input").addEventListener("keydown", e => {
-  if (e.key !== "Enter" || e.isComposing || e.keyCode === 229) return; // ignore IME confirm
+  if (e.isComposing || e.keyCode === 229) return; // ignore IME composition / confirm
+  if ((e.key === "ArrowUp" || e.key === "ArrowDown") && recall(e)) { e.preventDefault(); return; }
+  if (e.key !== "Enter") return;
   const mod = e.metaKey || e.ctrlKey;
   if (settings.sendKey === "enter" ? !e.shiftKey && !mod : mod) { e.preventDefault(); send(); }
 });
