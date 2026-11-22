@@ -23,7 +23,8 @@
 | 4 | ストレージの使い分け（チャット履歴の保存先を local / session から選択） | 1 |
 | 5 | Cloudflare Pages 配備（キャッシュヘッダ、ライブラリ同梱） | 1 |
 | 6 | モバイル対応（サイドバー開閉）、日本語 IME 入力中の Enter 誤送信防止 | 1 |
-| 6.5 | LM Studio ネイティブ API (`/api/v1/chat`) と ephemeral MCP の設定・送信 | 1 |
+| 6.5 | LM Studio ネイティブ API (`/api/v1/chat`) と MCP (ephemeral_mcp / mcp.json の plugin) の設定・送信 | 1 |
+| 6.6 | 入力欄の ↑ / ↓ による送信済み発言の呼び出し | 1 |
 | 7 | Cloudflare KV/D1 による履歴同期 | 2（未実装・設計のみ） |
 
 ## 非ゴール
@@ -54,3 +55,5 @@ spec/             本ドキュメント
 - チャット保存先を local / session に切り替えても履歴が失われない（移行される）。
 - 既存の `localStorage` データ（`chats`, `presets`, `s_*`）がそのまま読み込める。
 - HTTPS ページから http:// の接続先を指定した場合、原因を示す警告が出る。
+- 方式を「LM Studioネイティブ」にし MCP を有効にすると、`/api/v1/chat` に `integrations` 付きで送信され、ツール呼び出しが思考過程欄に表示される。
+- 入力欄の ↑ / ↓ で送信済み発言を呼び出せる（複数行編集・IME 変換中は妨げない）。

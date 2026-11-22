@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-A no-build browser chat UI (Japanese) for a local OpenAI-compatible LLM server (LM Studio), intended to be hosted on Cloudflare Pages and reach LM Studio over Tailscale. No package manager, tests, linter or git repo. Plans and design decisions are in `spec/` (`README.md` = scope/acceptance criteria, `design.md` = details); keep them in sync when changing behavior.
+A no-build browser chat UI (Japanese) for a local OpenAI-compatible LLM server (LM Studio), intended to be hosted on Cloudflare Pages and reach LM Studio over Tailscale. No package manager, tests or linter. Plans and design decisions are in `spec/` (`README.md` = scope/acceptance criteria, `design.md` = details); keep them in sync when changing behavior.
 
 To run, serve the directory statically (e.g. `python -m http.server`) or open `index.html`. A reachable LLM server with CORS enabled is required. An https-hosted page cannot call `http://` endpoints (mixed content), so use Tailscale Serve for https.
 
@@ -22,7 +22,8 @@ To run, serve the directory statically (e.g. `python -m http.server`) or open `i
   - `chats` and `currentId` live in whichever store `settings.chatStorage` selects (`chatStore()`), either local or session. `persist()` writes them; call it after mutating `chats` or `currentId`.
   - `migrate()` converts the legacy `s_*` keys on first run. Chat data format `{id,title,system,messages:[{role,content,reasoning?}]}` is unchanged.
 - **Connections**: a list of `{id,name,baseUrl,apiKey}`. `conn()`, `baseUrl()` and `authHeaders()` are used by both `loadModels()` (GET `/models`) and `generate()` (POST `/chat/completions`, SSE streaming or plain).
-- **API mode**: `settings.apiMode` selects OpenAI-compatible (`/chat/completions`) or LM Studio native (`/api/v1/chat`, with `settings.mcpServers` sent as `ephemeral_mcp` integrations). Both go through `generate()`; see `spec/design.md` §2.1.
+- **API mode**: `settings.apiMode` selects OpenAI-compatible (`/chat/completions`) or LM Studio native (`/api/v1/chat`). `settings.mcpServers` entries (`kind`: `ephemeral` or `plugin`) become `ephemeral_mcp` / `plugin` (`mcp/<name>`) integrations via `nativeIntegrations()`; tool calls are appended to the message `reasoning` text. Consecutive same-role messages are merged before sending. Both go through `generate()`; see `spec/design.md` §2.1.
 - **Rendering**: `setBody()` updates persistent child nodes (`details.think` and `.main`) so streaming doesn't reset the reasoning block's open state. Assistant text goes through `marked`, then `DOMPurify`, then `innerHTML`; keep that order. User text is plain `textContent`. Streaming repaints are throttled with `requestAnimationFrame`.
 - **Input**: the send key is configurable (`settings.sendKey`). The keydown handler must skip IME composition (`isComposing` / keyCode 229).
+- **Input recall**: ArrowUp/ArrowDown in `#input` walk through sent user messages across chats (`recall()`); it must stay inactive during IME composition and not break multi-line caret movement.
 - **Settings modal**: controls with `s_<key>` ids are bound generically by `bind()`. Changes apply and save immediately. Changing `chatStorage` goes through `switchStorage()`, which migrates the chat data.

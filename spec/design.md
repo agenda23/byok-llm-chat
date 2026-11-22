@@ -53,6 +53,11 @@ mcpServers: [{id,kind,label,url,allowedTools,headers,enabled}]  (kind: "ephemera
 SSE は `event:` 行付き（`message.delta` / `reasoning.delta` / `tool_call.*` / `error`）。ツール呼び出しは
 チャット形式を変えず、思考過程 (`reasoning`) に追記して表示する。`openai` 方式の挙動は従来どおり。
 
+- 前提: LM Studio 0.4.0 以降。ephemeral は「Allow per-request MCPs」、plugin は「Allow calling servers from mcp.json」が必要。
+  サーバーによっては API トークンの権限や OAuth 認証が別途必要（拒否時は 403 / `authentication required`）。
+- `temperature` はネイティブ API の範囲 (0〜1) に丸める。連続する同一ロールの発言（失敗した送信の残り）は送信前に結合する。
+- `headers` は JSON か「名前: 値」行で入力し、オブジェクトに変換して送る（文字列のままだと 400）。plugin 側のヘッダーは `mcp.json` で持つ。
+
 ## 3. Markdown 表示
 
 - `marked`（GFM, `breaks: true`）→ `DOMPurify` でサニタイズ → `innerHTML`。順序を変えない。
